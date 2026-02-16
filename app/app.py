@@ -263,6 +263,59 @@ with st.sidebar:
 
     st.divider()
     
+    # JSON File Uploader
+    st.subheader("📂 Upload Orders")
+    uploaded_file = st.file_uploader("Upload JSON", type=["json"])
+    
+    if uploaded_file is not None:
+        if st.button("Process File", use_container_width=True):
+            try:
+                import json
+                data = json.load(uploaded_file)
+                
+                if not isinstance(data, list):
+                    st.error("JSON must be a list of objects")
+                else:
+                    added_count = 0
+                    with st.status("Processing addresses...") as status:
+                        for item in data:
+                            addr = item.get("location")
+                            if addr:
+                                try:
+                                    # Geocoding logic
+                                    r = requests.get(
+                                        "https://nominatim.openstreetmap.org/search",
+                                        params={"q": addr + " Bangalore India", "format": "json", "limit": 1},
+                                        headers={"User-Agent": "routing-demo-1.0"},
+                                        timeout=5
+                                    )
+                                    if r.ok and r.json():
+                                        res = r.json()[0]
+                                        pt = [float(res["lat"]), float(res["lon"])]
+                                        st.session_state.locations.append(pt)
+                                        status.write(f"✅ Found: {addr}")
+                                        added_count += 1
+                                        time.sleep(1.1) # Respect Nominatim rate limits (1 per sec)
+                                    else:
+                                        status.write(f"❌ Not found: {addr}")
+                                except Exception as e:
+                                    status.write(f"⚠️ Error {addr}: {e}")
+                        
+                        if added_count > 0:
+                            status.update(label="Optimization starting...", state="running")
+                            generate_route_logic()
+                            status.update(label="Complete!", state="complete")
+                            st.toast(f"Imported {added_count} locations!", icon="🚀")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            status.update(label="No valid locations found", state="error")
+                            
+            except Exception as e:
+                st.error(f"File error: {e}")
+
+    st.divider()
+    
     if st.session_state.metrics:
         st.subheader("📊 Route Metrics")
         m = st.session_state.metrics
